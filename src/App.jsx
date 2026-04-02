@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 
 const AIRPORT_CODES = {
-  CHI: "Chicago", NYC: "New York City", NEW: "New York City", AUH: "Abu Dhabi",
+  CHI: "Chicago", NYC: "New York City", AUH: "Abu Dhabi",
   SEA: "Seattle", SFR: "San Francisco", LAX: "Los Angeles",
   ORD: "Chicago O'Hare", JFK: "JFK New York", SFO: "San Francisco",
   MIA: "Miami", DFW: "Dallas", ATL: "Atlanta",
@@ -149,7 +149,7 @@ export default function App() {
         const ct = await pg.getTextContent();
         txt += ct.items.map(x => x.str).join(" ") + "\n";
       }
-      const rows = parsePDFText(txt);
+      const rows = parsePDFText(txt).map(r => ({ ...r, location: r.location === "NEW" ? "NYC" : r.location }));
       if (!rows.length) { setError("No travel records found. Ensure it's from i94.cbp.dhs.gov."); setLoading(false); return; }
       setRawRows(rows); setMetrics(computeMetrics(rows));
     } catch (e) { setError("Failed to read PDF: " + e.message); }
