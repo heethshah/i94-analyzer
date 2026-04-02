@@ -1,674 +1,582 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useCallback } from “react”;
 
-// ── PDF.js loader ─────────────────────────────────────────────────
-if (typeof window !== "undefined" && !window["pdfjs-dist/build/pdf"]) {
-  const s = document.createElement("script");
-  s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-  document.head.appendChild(s);
-}
-
-// ── Design tokens ─────────────────────────────────────────────────
-const T = {
-  cream:    "#F5F0E8",
-  paper:    "#EDE8DC",
-  ink:      "#1A1208",
-  inkLight: "#3D3526",
-  terra:    "#C4432A",
-  sand:     "#D4A96A",
-  sage:     "#5C7A5F",
-  muted:    "#9A8E7A",
-  border:   "#D5CCBA",
-  stamp:    "#8B4513",
+const AIRPORT_CODES = {
+CHI: “Chicago”, NYC: “New York”, AUH: “Abu Dhabi”,
+SEA: “Seattle”, SFR: “San Francisco”, LAX: “Los Angeles”,
+ORD: “Chicago O’Hare”, JFK: “JFK New York”, SFO: “San Francisco”,
+MIA: “Miami”, DFW: “Dallas”, ATL: “Atlanta”,
+BOS: “Boston”, DEN: “Denver”, LAS: “Las Vegas”,
 };
 
-// ── Responsive breakpoint hook ────────────────────────────────────
-function useBreakpoint() {
-  const [bp, setBp] = useState(() => {
-    if (typeof window === "undefined") return "lg";
-    const w = window.innerWidth;
-    if (w < 480) return "xs";
-    if (w < 768) return "sm";
-    if (w < 1024) return "md";
-    return "lg";
-  });
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      if (w < 480) setBp("xs");
-      else if (w < 768) setBp("sm");
-      else if (w < 1024) setBp("md");
-      else setBp("lg");
-    };
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return {
-    bp,
-    isMobile:  bp === "xs" || bp === "sm",
-    isTablet:  bp === "md",
-    isDesktop: bp === "lg",
-    isSmall:   bp === "xs",
-  };
+function parsePDFText(text) {
+const rows = [];
+const re = /(\d{4}-\d{2}-\d{2})\s+(Arrival|Departure)\s+([A-Z]{3})\b/gi;
+let m;
+while ((m = re.exec(text)) !== null)
+rows.push({ date: m[1], type: m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase(), location: m[3] });
+if (!rows.length) {
+for (const line of text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean)) {
+const d = line.match(/(\d{4}-\d{2}-\d{2})/);
+const t = line.match(/\b(Arrival|Departure)\b/i);
+const locs = […line.matchAll(/\b([A-Z]{3})\b/g)];
+if (d && t && locs.length)
+rows.push({ date: d[1], type: t[1].charAt(0).toUpperCase() + t[1].slice(1).toLowerCase(), location: locs[locs.length - 1][1] });
+}
+}
+return rows;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
-function parseI94PDF(text) {
-  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-  const rows = [];
-  const dateRx = /^(\d{4}-\d{2}-\d{2})$/;
-  const typeRx = /^(Arrival|Departure)$/i;
-  for (let i = 0; i < lines.length; i++) {
-    if (dateRx.test(lines[i])) {
-      const date = lines[i];
-      if (i + 1 < lines.length && typeRx.test(lines[i + 1])) {
-        rows.push({ date, type: lines[i + 1], location: lines[i + 2] || "" });
-        i += 2;
-      }
+function leapYear(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
+function diy(y) { return leapYear(y) ? 366 : 365; }
+
+function computeMetrics(rows) {
+if (!rows.length) return null;
+const sorted = […rows].sort((a, b) => new Date(a.date) - new Date(b.date));
+const trips = []; let i = 0;
+while (i < sorted.length) {
+if (sorted[i].type === “Arrival”) {
+const arrival = sorted[i]; let dep = null;
+for (let j = i + 1; j < sorted.length; j++) { if (sorted[j].type === “Departure”) { dep = sorted[j]; i = j; break; } }
+trips.push({ arrival, departure: dep });
+}
+i++;
+}
+let totalUsaDays = 0, totalOutsideDays = 0;
+const yearlyDays = {}, yearlyOutsideDays = {}, tripLog = [];
+
+function tally(s, e, b) {
+const c = new Date(s); c.setHours(0, 0, 0, 0);
+const f = new Date(e); f.setHours(0, 0, 0, 0);
+while (c < f) { const y = c.getFullYear(); b[y] = (b[y] || 0) + 1; c.setDate(c.getDate() + 1); }
+}
+
+for (let t = 0; t < trips.length; t++) {
+const { arrival, departure } = trips[t];
+const aD = new Date(arrival.date), dD = departure ? new Date(departure.date) : new Date();
+const stay = Math.round((dD - aD) / 86400000);
+totalUsaDays += stay; tally(aD, dD, yearlyDays);
+let gapDays = null, gapEnd = null;
+if (departure && t + 1 < trips.length) {
+const nA = new Date(trips[t + 1].arrival.date), dDep = new Date(departure.date);
+gapDays = Math.round((nA - dDep) / 86400000);
+totalOutsideDays += gapDays; gapEnd = trips[t + 1].arrival.date;
+tally(dDep, nA, yearlyOutsideDays);
+}
+tripLog.push({ arrival: arrival.date, arrivalLoc: arrival.location, departure: departure ? departure.date : “Present”, departureLoc: departure ? departure.location : “—”, stayDays: stay, gapDays, gapEnd });
+}
+
+const locVisits = {};
+sorted.forEach(r => {
+if (!locVisits[r.location]) locVisits[r.location] = { arrivals: 0, departures: 0 };
+locVisits[r.location][r.type === “Arrival” ? “arrivals” : “departures”]++;
+});
+
+const firstEntry = sorted.find(r => r.type === “Arrival”);
+const lastEntry = sorted[sorted.length - 1];
+const spanDays = firstEntry ? Math.round((new Date(lastEntry.date) - new Date(firstEntry.date)) / 86400000) : 0;
+
+new Set([…Object.keys(yearlyDays), …Object.keys(yearlyOutsideDays)]).forEach(yr => {
+const cap = diy(+yr) - (yearlyDays[yr] || 0);
+if ((yearlyOutsideDays[yr] || 0) > cap) yearlyOutsideDays[yr] = cap;
+});
+if (firstEntry) {
+const fy = new Date(firstEntry.date).getFullYear();
+yearlyOutsideDays[fy] = diy(fy) - (yearlyDays[fy] || 0);
+Object.keys(yearlyOutsideDays).forEach(yr => { if (+yr < fy) delete yearlyOutsideDays[yr]; });
+}
+
+// Current USA streak
+let usaStreak = 0;
+if (tripLog.length && tripLog[tripLog.length - 1].departure === “Present”) {
+usaStreak = tripLog[tripLog.length - 1].stayDays;
+}
+
+// Longest trip abroad
+let longestAbroad = 0;
+tripLog.forEach(t => { if (t.gapDays && t.gapDays > longestAbroad) longestAbroad = t.gapDays; });
+
+return { trips, tripLog, totalUsaDays, totalOutsideDays, yearlyDays, yearlyOutsideDays, locVisits, spanDays, sorted, usaStreak, longestAbroad };
+}
+
+function fmt(d) {
+if (!d || d === “Present”) return “Present”;
+return new Date(d).toLocaleDateString(“en-US”, { month: “short”, day: “numeric”, year: “numeric” });
+}
+
+// Donut chart component
+function Donut({ pct }) {
+const r = 54, cx = 64, cy = 64;
+const circ = 2 * Math.PI * r;
+const dash = (pct / 100) * circ;
+return (
+<svg width="128" height="128" viewBox="0 0 128 128">
+<circle cx={cx} cy={cy} r={r} fill="none" stroke="#C8A882" strokeWidth="14" opacity="0.25" />
+<circle cx={cx} cy={cy} r={r} fill=“none” stroke=”#C0392B” strokeWidth=“14”
+strokeDasharray={`${(100 - pct) / 100 * circ} ${pct / 100 * circ}`}
+strokeDashoffset={circ * 0.25}
+strokeLinecap=“round” />
+<circle cx={cx} cy={cy} r={r} fill=“none” stroke=”#2C5F4A” strokeWidth=“14”
+strokeDasharray={`${dash} ${circ - dash}`}
+strokeDashoffset={circ * 0.25 + (100 - pct) / 100 * circ}
+strokeLinecap=“round” />
+<text x={cx} y={cy - 6} textAnchor=“middle” fill=”#2C2C1E” fontFamily=”‘Playfair Display’, serif” fontSize=“18” fontWeight=“700”>{pct}%</text>
+<text x={cx} y={cy + 12} textAnchor=“middle” fill=”#8B7355” fontFamily=”‘Barlow Condensed’, sans-serif” fontSize=“9” fontWeight=“600” letterSpacing=“2”>IN USA</text>
+</svg>
+);
+}
+
+const TABS = [“Overview”, “Trips”, “Locations”, “By Year”, “Timeline”];
+
+export default function App() {
+const [metrics, setMetrics] = useState(null);
+const [rawRows, setRawRows] = useState([]);
+const [dragging, setDragging] = useState(false);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState(””);
+const [tab, setTab] = useState(0);
+
+const handleFile = useCallback(async (file) => {
+if (!file || file.type !== “application/pdf”) { setError(“Upload a PDF file.”); return; }
+setError(””); setLoading(true);
+try {
+if (!window.pdfjsLib) {
+await new Promise((res, rej) => {
+const s = document.createElement(“script”);
+s.src = “https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js”;
+s.onload = res; s.onerror = rej; document.head.appendChild(s);
+});
+window.pdfjsLib.GlobalWorkerOptions.workerSrc = “https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js”;
+}
+const buf = await file.arrayBuffer();
+const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+let txt = “”;
+for (let p = 1; p <= pdf.numPages; p++) {
+const pg = await pdf.getPage(p);
+const ct = await pg.getTextContent();
+txt += ct.items.map(x => x.str).join(” “) + “\n”;
+}
+const rows = parsePDFText(txt);
+if (!rows.length) { setError(“No travel records found. Ensure it’s from i94.cbp.dhs.gov.”); setLoading(false); return; }
+setRawRows(rows); setMetrics(computeMetrics(rows));
+} catch (e) { setError(“Failed to read PDF: “ + e.message); }
+setLoading(false);
+}, []);
+
+const onDrop = useCallback((e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }, [handleFile]);
+
+const usaPct = metrics ? Math.round(metrics.totalUsaDays / (metrics.totalUsaDays + metrics.totalOutsideDays) * 100) : 0;
+
+return (
+<div style={{ fontFamily: “‘Barlow’, sans-serif”, minHeight: “100vh”, background: “#E8E0D0”, color: “#2C2C1E” }}>
+<style>{`
+@import url(‘https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap’);
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { -webkit-font-smoothing: antialiased; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #E8E0D0; }
+::-webkit-scrollbar-thumb { background: #C8B89A; border-radius: 99px; }
+
+```
+    .fade { animation: fu .45s cubic-bezier(0.22,1,0.36,1) both; }
+    .d1 { animation-delay: .04s; } .d2 { animation-delay: .08s; } .d3 { animation-delay: .12s; } .d4 { animation-delay: .16s; }
+    @keyframes fu { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+    .card {
+      background: #F0E8D8;
+      border: 1px solid #C8B89A;
+      border-radius: 4px;
+      position: relative;
     }
-  }
-  rows.sort((a, b) => new Date(a.date) - new Date(b.date));
-  return rows;
-}
-
-function addDays(str, n) {
-  const d = new Date(str); d.setDate(d.getDate() + n);
-  return d.toISOString().split("T")[0];
-}
-function diffDays(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
-function isLeap(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
-
-function analyze(rows) {
-  if (!rows.length) return null;
-  const today = new Date().toISOString().split("T")[0];
-  const events = rows.map(r => ({ date: r.date, type: r.type.toLowerCase(), location: r.location }));
-  const segs = [];
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i], next = events[i + 1];
-    const end = next ? next.date : today;
-    if (e.type === "arrival") {
-      segs.push({ from: e.date, to: end, status: "inside" });
-    } else {
-      segs.push({ from: e.date, to: e.date, status: "inside" });
-      segs.push({ from: addDays(e.date, 1), to: end, status: "outside" });
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 4px 4px 0 0;
     }
-  }
-  const merged = [];
-  for (const s of segs) {
-    if (merged.length && merged[merged.length-1].status === s.status && merged[merged.length-1].to === s.from)
-      merged[merged.length-1].to = s.to;
-    else merged.push({ ...s });
-  }
-  const firstY = +events[0].date.slice(0,4), lastY = +today.slice(0,4);
-  const yearStats = {};
-  for (let y = firstY; y <= lastY; y++) {
-    const ys = `${y}-01-01`, ye = `${y}-12-31`;
-    let inside = 0, outside = 0;
-    for (const s of merged) {
-      const from = s.from > ys ? s.from : ys;
-      const to   = s.to   < ye ? s.to   : ye;
-      if (from > to) continue;
-      const d = diffDays(from, to) + 1;
-      if (s.status === "inside") inside += d; else outside += d;
+    .card-green::before { background: #2C5F4A; }
+    .card-red::before { background: #C0392B; }
+    .card-gold::before { background: #B8860B; }
+    .card-brown::before { background: #6B4226; }
+
+    .card-lift { transition: transform .18s, box-shadow .18s; }
+    .card-lift:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(44,44,30,.12); }
+
+    .tab-btn {
+      border: 1px solid #C8B89A;
+      cursor: pointer;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      transition: all .15s;
+      border-radius: 3px;
+      white-space: nowrap;
+      background: transparent;
+      color: #8B7355;
+      padding: 6px 14px;
     }
-    if (inside + outside > 0) yearStats[y] = { inside, outside, total: inside+outside, leap: isLeap(y) };
-  }
-  let totalIn = 0, totalOut = 0;
-  Object.values(yearStats).forEach(y => { totalIn += y.inside; totalOut += y.outside; });
-  const last = events[events.length-1];
-  const streak = last.type === "arrival" ? diffDays(last.date, today) + 1 : 0;
-  let longest = 0;
-  for (const s of merged) if (s.status === "outside") longest = Math.max(longest, diffDays(s.from, s.to));
-  return { yearStats, totalIn, totalOut, streak, longest, events };
-}
+    .tab-btn:hover:not(.on) { background: #E0D4BE; color: #5C4A2A; }
+    .tab-btn.on { background: #2C5F4A; color: #F0E8D8; border-color: #2C5F4A; }
 
-// ── Split-flap counter ────────────────────────────────────────────
-function SplitFlap({ value, duration = 1600 }) {
-  const [display, setDisplay] = useState(0);
-  const [tick, setTick] = useState(false);
-  useEffect(() => {
-    let frame = 0; const total = 20;
-    const iv = setInterval(() => {
-      frame++;
-      if (frame < total) { setDisplay(Math.floor(Math.random() * value)); setTick(t => !t); }
-      else { setDisplay(value); clearInterval(iv); }
-    }, duration / total);
-    return () => clearInterval(iv);
-  }, [value]);
-  return (
-    <span style={{ fontFamily: "'Courier Prime', monospace", display: "inline-block", transition: "transform 0.06s", transform: tick ? "scaleY(0.92)" : "scaleY(1)" }}>
-      {display}
-    </span>
-  );
-}
+    .row-r { transition: background .1s; border-bottom: 1px solid #DDD0B8; }
+    .row-r:hover { background: #E8DCC8; }
+    .row-r:last-child { border-bottom: none; }
 
-// ── Ink-draw bar ──────────────────────────────────────────────────
-function InkBar({ pct, color, delay = 0, height = 10 }) {
-  const [w, setW] = useState(0);
-  useEffect(() => { const t = setTimeout(() => setW(pct), 80 + delay); return () => clearTimeout(t); }, [pct, delay]);
-  return (
-    <div style={{ height, background: T.border, borderRadius: 2, overflow: "hidden", position: "relative" }}>
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${w}%`, background: color, borderRadius: 2, transition: `width 1.3s cubic-bezier(0.16,1,0.3,1) ${delay}ms` }} />
-    </div>
-  );
-}
+    .upload-zone {
+      border: 2px dashed #C8B89A;
+      border-radius: 6px;
+      background: #EDE5D5;
+      transition: all .2s;
+      cursor: pointer;
+    }
+    .upload-zone:hover, .upload-zone.drag {
+      border-color: #2C5F4A;
+      background: #E4F0EB;
+    }
 
-// ── Passport stamp ────────────────────────────────────────────────
-function Stamp({ children, color = T.terra, rotate = -2, size = "sm" }) {
-  return (
-    <div style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      border: `${size === "sm" ? 1.5 : 2}px solid ${color}`,
-      borderRadius: 3, padding: size === "sm" ? "2px 7px" : "3px 12px",
-      color, fontSize: size === "sm" ? 9 : 10,
-      fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase",
-      transform: `rotate(${rotate}deg)`, opacity: 0.8,
-      fontFamily: "'Courier Prime', monospace", flexShrink: 0,
-      whiteSpace: "nowrap",
-    }}>{children}</div>
-  );
-}
+    .badge-arr { display:inline-flex; align-items:center; font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:700; padding:2px 9px; border-radius:3px; letter-spacing:.08em; text-transform:uppercase; background:#E4F0EB; color:#2C5F4A; border:1px solid #9FBFB0; }
+    .badge-dep { display:inline-flex; align-items:center; font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:700; padding:2px 9px; border-radius:3px; letter-spacing:.08em; text-transform:uppercase; background:#F5E8E6; color:#C0392B; border:1px solid #D4A49A; }
+    .badge-num { display:inline-flex; align-items:center; font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:700; padding:2px 9px; border-radius:3px; letter-spacing:.08em; text-transform:uppercase; background:#F0E8D8; color:#8B7355; border:1px solid #C8B89A; }
 
-// ── Stat card ─────────────────────────────────────────────────────
-function StatCard({ label, value, icon, color, delay = 0, compact = false }) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setVisible(true), delay); return () => clearTimeout(t); }, [delay]);
-  return (
-    <div style={{
-      background: T.cream, border: `1px solid ${T.border}`, borderRadius: 3,
-      padding: compact ? "14px 16px" : "20px 22px",
-      position: "relative", overflow: "hidden",
-      opacity: visible ? 1 : 0,
-      transform: visible ? "translateY(0) rotate(0deg)" : "translateY(28px) rotate(0.8deg)",
-      transition: "all 0.7s cubic-bezier(0.16,1,0.3,1)",
-      boxShadow: "2px 3px 0 #D5CCBA",
-    }}>
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: color }} />
-      <div style={{ position: "absolute", top: 0, right: 0, width: 0, height: 0, borderStyle: "solid", borderWidth: "0 18px 18px 0", borderColor: `transparent ${T.paper} transparent transparent` }} />
-      <div style={{ fontSize: compact ? 18 : 22, marginBottom: compact ? 8 : 12 }}>{icon}</div>
-      <div style={{ fontSize: compact ? 28 : 38, fontWeight: 700, color: T.ink, fontFamily: "'Playfair Display', serif", lineHeight: 1 }}>
-        <SplitFlap value={value} />
-      </div>
-      <div style={{ fontSize: 9, color: T.muted, marginTop: compact ? 6 : 8, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Courier Prime', monospace" }}>{label}</div>
-      <div style={{ position: "absolute", bottom: compact ? 8 : 10, right: compact ? 8 : 10, transform: "rotate(4deg)", opacity: 0.7 }}>
-        <Stamp color={color}>days</Stamp>
-      </div>
-    </div>
-  );
-}
+    .divider { border: none; border-top: 1px solid #C8B89A; }
+    .section-label { font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#8B7355; }
 
-// ── Ring donut ────────────────────────────────────────────────────
-function RingChart({ inside, outside }) {
-  const [go, setGo] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setGo(true), 400); return () => clearTimeout(t); }, []);
-  const total = inside + outside, pct = inside / total;
-  const r = 58, circ = 2 * Math.PI * r;
-  return (
-    <div style={{ position: "relative", width: "100%", maxWidth: 170, aspectRatio: "1", margin: "0 auto" }}>
-      <svg viewBox="0 0 160 160" width="100%" height="100%" style={{ transform: "rotate(-90deg)", display: "block" }}>
-        <circle cx={80} cy={80} r={r} fill="none" stroke={T.border} strokeWidth={13} />
-        <circle cx={80} cy={80} r={r} fill="none" stroke={T.terra} strokeWidth={13}
-          strokeDasharray={`${(1-pct)*circ} ${circ}`} strokeDashoffset={-pct*circ} />
-        <circle cx={80} cy={80} r={r} fill="none" stroke={T.sage} strokeWidth={13}
-          strokeDasharray={`${go ? pct*circ : 0} ${circ}`} strokeLinecap="round"
-          style={{ transition: "stroke-dasharray 1.5s cubic-bezier(0.16,1,0.3,1)" }} />
-      </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: "clamp(16px,3.5vw,24px)", fontWeight: 700, color: T.ink, fontFamily: "'Playfair Display', serif" }}>{(pct*100).toFixed(0)}%</div>
-        <div style={{ fontSize: 9, color: T.muted, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Courier Prime', monospace" }}>in USA</div>
-      </div>
-    </div>
-  );
-}
+    .bar-track { height: 7px; border-radius: 99px; background: #D8CCBA; overflow: hidden; display: flex; }
+    .bar-in { background: linear-gradient(90deg, #2C5F4A, #3D7A61); transition: width .9s cubic-bezier(0.22,1,0.36,1); }
+    .bar-out { background: linear-gradient(90deg, #A0291F, #C0392B); transition: width .9s cubic-bezier(0.22,1,0.36,1); }
 
-// ── Year card ─────────────────────────────────────────────────────
-function YearCard({ year, data, index, compact = false }) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setVisible(true), index * 90 + 150); return () => clearTimeout(t); }, [index]);
-  const inPct  = (data.inside  / data.total) * 100;
-  const outPct = (data.outside / data.total) * 100;
-  return (
-    <div style={{
-      background: T.cream, border: `1px solid ${T.border}`, borderRadius: 3,
-      padding: compact ? "12px 14px" : "16px 20px",
-      opacity: visible ? 1 : 0,
-      transform: visible ? "translateX(0) rotate(0deg)" : "translateX(-32px) rotate(-0.3deg)",
-      transition: `all 0.65s cubic-bezier(0.16,1,0.3,1) ${index*55}ms`,
-      boxShadow: "1px 2px 0 #D5CCBA",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontSize: compact ? 18 : 22, fontWeight: 700, color: T.ink, fontFamily: "'Playfair Display', serif" }}>{year}</span>
-          {data.leap && <span style={{ fontSize: 9, color: T.sand, fontFamily: "'Courier Prime', monospace", letterSpacing: 1 }}>LEAP</span>}
+    .dot-arr { width:8px; height:8px; border-radius:50%; background:#2C5F4A; flex-shrink:0; }
+    .dot-dep { width:8px; height:8px; border-radius:50%; background:#C0392B; flex-shrink:0; }
+    .dot-gap { width:6px; height:6px; border-radius:50%; background:#B8860B; flex-shrink:0; }
+    .t-rail { width:1.5px; background:linear-gradient(to bottom,#2C5F4A60,#C0392B50); margin:4px auto; }
+
+    .stat-num { font-family:'Playfair Display',serif; font-weight:700; }
+    .heading { font-family:'Playfair Display',serif; }
+
+    @media(max-width:480px) {
+      .stat-big { font-size: 42px !important; }
+    }
+  `}</style>
+
+  {/* Nav */}
+  <nav style={{ background: "#2C2C1E", borderBottom: "1px solid #1A1A12", position: "sticky", top: 0, zIndex: 50 }}>
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 20px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 4, background: "#2C5F4A", border: "1px solid #3D7A61", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F0E8D8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Stamp color={T.sage}  rotate={1}>{inPct.toFixed(0)}% in</Stamp>
-          <Stamp color={T.terra} rotate={-1}>{outPct.toFixed(0)}% out</Stamp>
-        </div>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-            <span style={{ fontSize: 10, color: T.sage,  fontFamily: "'Courier Prime', monospace", letterSpacing: 0.8, textTransform: "uppercase" }}>Inside USA</span>
-            <span style={{ fontSize: 10, color: T.ink,   fontFamily: "'Courier Prime', monospace", fontWeight: 700 }}>{data.inside} days</span>
-          </div>
-          <InkBar pct={inPct}  color={T.sage}  delay={index * 55} />
-        </div>
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-            <span style={{ fontSize: 10, color: T.terra, fontFamily: "'Courier Prime', monospace", letterSpacing: 0.8, textTransform: "uppercase" }}>Outside USA</span>
-            <span style={{ fontSize: 10, color: T.ink,   fontFamily: "'Courier Prime', monospace", fontWeight: 700 }}>{data.outside} days</span>
-          </div>
-          <InkBar pct={outPct} color={T.terra} delay={index * 55 + 120} />
+          <div className="heading" style={{ fontSize: 15, color: "#F0E8D8", fontWeight: 700, letterSpacing: "-.2px" }}>I-94 Analyzer</div>
+          <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 9, color: "#6B5E4A", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 600 }}>CBP Travel History</div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Divider ───────────────────────────────────────────────────────
-function Divider({ label }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "28px 0 16px" }}>
-      <div style={{ flex: 1, height: 1, background: T.border }} />
-      <span style={{ fontSize: 9, color: T.muted, fontFamily: "'Courier Prime', monospace", letterSpacing: 2.5, textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</span>
-      <div style={{ flex: 1, height: 1, background: T.border }} />
-    </div>
-  );
-}
-
-// ── Upload screen ─────────────────────────────────────────────────
-function UploadScreen({ onData }) {
-  const { isMobile, isSmall } = useBreakpoint();
-  const [dragging, setDragging] = useState(false);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
-  const [mounted, setMounted]   = useState(false);
-  const inputRef = useRef();
-
-  useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t); }, []);
-
-  const waitForPdfJs = () => new Promise(res => {
-    const check = () => window["pdfjs-dist/build/pdf"] ? res() : setTimeout(check, 100);
-    check();
-  });
-
-  const processFile = async (file) => {
-    setLoading(true); setError("");
-    try {
-      let text = "";
-      if (file.name.endsWith(".pdf") || file.type === "application/pdf") {
-        await waitForPdfJs();
-        const lib = window["pdfjs-dist/build/pdf"];
-        lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-        const ab = await file.arrayBuffer();
-        const pdf = await lib.getDocument({ data: ab }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const pg = await pdf.getPage(i);
-          const ct = await pg.getTextContent();
-          text += ct.items.map(x => x.str).join("\n") + "\n";
-        }
-      } else { text = await file.text(); }
-      const rows = parseI94PDF(text);
-      if (!rows.length) setError("Couldn't find travel data. Make sure this is an I-94 PDF from i94.cbp.dhs.gov.");
-      else onData(analyze(rows), rows);
-    } catch(e) { setError("Error: " + e.message); }
-    setLoading(false);
-  };
-
-  const onDrop = useCallback(e => {
-    e.preventDefault(); setDragging(false);
-    const f = e.dataTransfer.files[0]; if (f) processFile(f);
-  }, []);
-
-  return (
-    <div style={{ minHeight: "100vh", background: T.paper, display: "flex", alignItems: "center", justifyContent: "center", padding: isSmall ? 16 : 24, position: "relative", overflow: "hidden" }}>
-      {/* Ruled lines */}
-      {[...Array(10)].map((_, i) => (
-        <div key={i} style={{ position: "absolute", left: 0, right: 0, height: 1, background: T.border, top: `${8 + i * 10}%`, opacity: 0.35 }} />
-      ))}
-      {/* Watermark — hidden on very small screens */}
-      {!isSmall && (
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%) rotate(-18deg)", fontSize: "clamp(40px,8vw,100px)", fontFamily: "'Playfair Display', serif", fontWeight: 700, color: T.border, opacity: 0.18, whiteSpace: "nowrap", userSelect: "none", pointerEvents: "none" }}>
-          TRAVEL RECORD
-        </div>
+      {metrics && (
+        <button onClick={() => { setMetrics(null); setRawRows([]); setError(""); setTab(0); }}
+          style={{ border: "1px solid #3A3A2A", borderRadius: 3, background: "none", fontSize: 10, padding: "5px 14px", color: "#8B7A5A", cursor: "pointer", fontFamily: "'Barlow Condensed',sans-serif", letterSpacing: ".1em", textTransform: "uppercase", fontWeight: 600, transition: "all .15s" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#5A5A3A"; e.currentTarget.style.color = "#C8B89A"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#3A3A2A"; e.currentTarget.style.color = "#8B7A5A"; }}>
+          New File
+        </button>
       )}
+    </div>
+  </nav>
 
-      <div style={{
-        position: "relative", zIndex: 1, maxWidth: 520, width: "100%",
-        opacity: mounted ? 1 : 0,
-        transform: mounted ? "translateY(0)" : "translateY(40px)",
-        transition: "all 1s cubic-bezier(0.16,1,0.3,1)",
-      }}>
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: isSmall ? 24 : 36 }}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 16 }}>
-            <Stamp color={T.terra} rotate={-4} size="md">Official</Stamp>
-            <Stamp color={T.sage}  rotate={3}  size="md">Document</Stamp>
-          </div>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: isSmall ? 48 : "clamp(40px,9vw,72px)", fontWeight: 700, color: T.ink, margin: 0, lineHeight: 1 }}>
-            I-94<br /><span style={{ color: T.terra }}>Analyzer</span>
-          </h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0 12px" }}>
-            <div style={{ flex: 1, height: 1, background: T.ink }} />
-            <div style={{ width: 5, height: 5, background: T.terra, transform: "rotate(45deg)" }} />
-            <div style={{ flex: 1, height: 1, background: T.ink }} />
-          </div>
-          <p style={{ color: T.muted, fontSize: isSmall ? 12 : 13, fontFamily: "'Courier Prime', monospace", lineHeight: 1.8, margin: 0 }}>
-            Upload your travel history · Know your days
-          </p>
-        </div>
+  <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 20px 90px" }}>
 
-        {/* Drop zone */}
-        <div
+    {/* Upload */}
+    {!metrics && (
+      <div className="fade">
+        <div className={`upload-zone ${dragging ? "drag" : ""}`}
+          style={{ padding: "clamp(48px,10vw,80px) 28px", textAlign: "center" }}
           onDragOver={e => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          onClick={() => inputRef.current.click()}
-          style={{
-            border: `2px dashed ${dragging ? T.terra : T.border}`,
-            borderRadius: 4, padding: isSmall ? "32px 20px" : "44px 32px",
-            textAlign: "center", cursor: "pointer",
-            background: dragging ? `${T.terra}08` : T.cream,
-            transition: "all 0.3s ease",
-            boxShadow: dragging ? `0 0 0 4px ${T.terra}22, 2px 3px 0 #D5CCBA` : "2px 3px 0 #D5CCBA",
-            position: "relative",
-            // Disable hover drag styling on mobile since no drag support
-            WebkitTapHighlightColor: "transparent",
-          }}
-        >
-          {/* Corner marks */}
-          {[0,1,2,3].map(i => (
-            <div key={i} style={{
-              position: "absolute",
-              top: i < 2 ? 10 : "auto", bottom: i >= 2 ? 10 : "auto",
-              left: i%2===0 ? 10 : "auto", right: i%2===1 ? 10 : "auto",
-              width: 12, height: 12,
-              borderTop:    i < 2  ? `2px solid ${T.muted}` : "none",
-              borderBottom: i >= 2 ? `2px solid ${T.muted}` : "none",
-              borderLeft:   i%2===0 ? `2px solid ${T.muted}` : "none",
-              borderRight:  i%2===1 ? `2px solid ${T.muted}` : "none",
-              opacity: 0.4,
-            }} />
-          ))}
-          <input ref={inputRef} type="file" accept=".pdf,.txt,application/pdf"
-            style={{ display: "none" }}
-            onChange={e => e.target.files[0] && processFile(e.target.files[0])} />
+          onClick={() => !loading && document.getElementById("fi").click()}>
 
           {loading ? (
             <div>
-              <div style={{ fontSize: isSmall ? 36 : 44, marginBottom: 12, display: "inline-block", animation: "soar 1.4s ease-in-out infinite" }}>✈️</div>
-              <div style={{ color: T.inkLight, fontFamily: "'Courier Prime', monospace", fontSize: 13, letterSpacing: 1 }}>Analyzing travel record...</div>
+              <div style={{ width: 36, height: 36, border: "2px solid #C8B89A", borderTop: "2px solid #2C5F4A", borderRadius: "50%", margin: "0 auto 18px", animation: "spin 1s linear infinite" }} />
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              <div className="heading" style={{ fontSize: 20, color: "#2C2C1E", marginBottom: 6 }}>Parsing PDF</div>
+              <div style={{ fontSize: 13, color: "#8B7355" }}>Extracting travel records…</div>
             </div>
           ) : (
-            <>
-              <div style={{ fontSize: isSmall ? 40 : 48, marginBottom: 12 }}>🛂</div>
-              <div style={{ fontSize: isSmall ? 16 : 18, fontWeight: 700, color: T.ink, marginBottom: 6, fontFamily: "'Playfair Display', serif" }}>
-                {isMobile ? "Tap to upload your I-94 PDF" : "Drop your I-94 PDF here"}
+            <div>
+              <div style={{ width: 52, height: 52, borderRadius: 6, border: "1px solid #C8B89A", background: "#E8DCC8", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B4226" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><polyline points="9 15 12 18 15 15" />
+                </svg>
               </div>
-              {!isMobile && (
-                <div style={{ fontSize: 12, color: T.muted, fontFamily: "'Courier Prime', monospace", marginBottom: 20, letterSpacing: 0.5 }}>
-                  or click to browse · from i94.cbp.dhs.gov
-                </div>
-              )}
-              {isMobile && (
-                <div style={{ fontSize: 11, color: T.muted, fontFamily: "'Courier Prime', monospace", marginBottom: 18, letterSpacing: 0.5 }}>
-                  from i94.cbp.dhs.gov
-                </div>
-              )}
-              <div style={{ display: "inline-block", background: T.ink, color: T.cream, borderRadius: 2, padding: isSmall ? "10px 24px" : "10px 28px", fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", fontFamily: "'Courier Prime', monospace", boxShadow: "2px 2px 0 " + T.terra }}>
-                Choose File
+              <div className="heading" style={{ fontSize: 24, color: "#2C2C1E", marginBottom: 8, fontWeight: 700 }}>Drop Your I-94 PDF</div>
+              <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, color: "#8B7355", marginBottom: 22, letterSpacing: ".06em", textTransform: "uppercase" }}>Exported from i94.cbp.dhs.gov · Processed locally</div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#2C5F4A", color: "#F0E8D8", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, fontWeight: 700, padding: "10px 24px", borderRadius: 4, letterSpacing: ".1em", textTransform: "uppercase" }}>
+                Browse File
               </div>
-            </>
+            </div>
           )}
+          <input id="fi" type="file" accept="application/pdf" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
         </div>
 
         {error && (
-          <div style={{ marginTop: 14, padding: "10px 14px", background: `${T.terra}12`, border: `1px solid ${T.terra}66`, borderRadius: 3, fontSize: 12, color: T.terra, fontFamily: "'Courier Prime', monospace" }}>
-            ⚠ {error}
+          <div style={{ marginTop: 12, padding: "12px 16px", background: "#F5E8E6", border: "1px solid #D4A49A", borderRadius: 4, fontSize: 13, color: "#8B2020", display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            {error}
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Dashboard */}
+    {metrics && (
+      <div>
+
+        {/* Page title */}
+        <div className="fade" style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
+            <h1 className="heading" style={{ fontSize: "clamp(28px,6vw,40px)", fontWeight: 900, color: "#2C2C1E", letterSpacing: "-.5px" }}>Travel Record</h1>
+            <div style={{ display: "flex", gap: 6 }}>
+              <span className="badge-num">{rawRows.length} Events</span>
+              <span className="badge-num">{Object.keys(metrics.yearlyDays).length} Years</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <div style={{ flex: 1, height: 1, background: "#C8B89A" }} />
+            <div style={{ display: "flex", gap: 5 }}>
+              {[0,1,2].map(i => <div key={i} style={{ width: 5, height: 5, borderRadius: 1, background: "#C0392B", transform: "rotate(45deg)" }} />)}
+            </div>
+            <div style={{ flex: 1, height: 1, background: "#C8B89A" }} />
+          </div>
+        </div>
+
+        {/* Stat cards */}
+        <div className="fade d1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(148px,1fr))", gap: 10, marginBottom: 12 }}>
+          {[
+            { label: "Days Inside USA", value: metrics.totalUsaDays, cls: "card-green" },
+            { label: "Days Outside USA", value: metrics.totalOutsideDays, cls: "card-red" },
+            { label: "USA Streak", value: metrics.usaStreak, cls: "card-gold", suffix: "Current" },
+            { label: "Longest Abroad", value: metrics.longestAbroad, cls: "card-brown" },
+          ].map((s, idx) => (
+            <div key={s.label} className={`card card-lift ${s.cls}`} style={{ padding: "18px 16px" }}>
+              <div className="stat-num stat-big" style={{ fontSize: 48, lineHeight: .9, color: "#2C2C1E", marginBottom: 10 }}>
+                {s.value.toLocaleString()}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div className="section-label" style={{ fontSize: 9 }}>{s.label}</div>
+                <span className="badge-num">Days</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Donut + distribution */}
+        <div className="fade d2 card" style={{ padding: "20px", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+            <div className="section-label" style={{ minWidth: 40 }}>Split</div>
+            <div style={{ display: "flex", justifyContent: "center", flex: "0 0 auto" }}>
+              <Donut pct={usaPct} />
+            </div>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <div style={{ marginBottom: 12 }}>
+                <div className="stat-num" style={{ fontSize: 28, color: "#2C5F4A", lineHeight: 1 }}>{metrics.totalUsaDays}d</div>
+                <div className="section-label" style={{ marginTop: 2 }}>Inside USA</div>
+              </div>
+              <div>
+                <div className="stat-num" style={{ fontSize: 28, color: "#C0392B", lineHeight: 1 }}>{metrics.totalOutsideDays}d</div>
+                <div className="section-label" style={{ marginTop: 2 }}>Outside USA</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="fade d3" style={{ display: "flex", gap: 4, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
+          {TABS.map((t, idx) => (
+            <button key={t} className={`tab-btn ${tab === idx ? "on" : ""}`} onClick={() => setTab(idx)}>{t}</button>
+          ))}
+        </div>
+
+        {/* Overview */}
+        {tab === 0 && (
+          <div className="fade card" style={{ overflow: "hidden" }}>
+            <div style={{ padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #C8B89A" }}>
+              <span className="section-label">All Records</span>
+              <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#8B7355" }}>{rawRows.length} entries</span>
+            </div>
+            {[...rawRows].sort((a, b) => new Date(b.date) - new Date(a.date)).map((r, i, arr) => (
+              <div key={i} className="row-r" style={{ display: "flex", alignItems: "center", padding: "11px 18px", gap: 12 }}>
+                <div className={r.type === "Arrival" ? "dot-arr" : "dot-dep"} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "#2C2C1E" }}>
+                    {AIRPORT_CODES[r.location] || r.location}
+                    <span style={{ color: "#B8A888", fontSize: 11, fontFamily: "'Barlow Condensed',sans-serif", letterSpacing: ".06em", marginLeft: 6 }}>{r.location}</span>
+                  </div>
+                  <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#8B7355", marginTop: 1, letterSpacing: ".04em" }}>{fmt(r.date)}</div>
+                </div>
+                <span className={r.type === "Arrival" ? "badge-arr" : "badge-dep"}>{r.type}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        <p style={{ textAlign: "center", fontSize: 10, color: T.muted, marginTop: 16, fontFamily: "'Courier Prime', monospace", letterSpacing: 0.5, lineHeight: 1.6 }}>
-          🔒 All processing is local — your data never leaves this device
-        </p>
-      </div>
-
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Courier+Prime:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
-        @keyframes soar { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-10px) rotate(3deg)} }
-        * { box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; }
-        body { margin: 0; background: ${T.paper}; }
-      `}</style>
-    </div>
-  );
-}
-
-// ── Dashboard ─────────────────────────────────────────────────────
-function Dashboard({ analysis, rows, onReset }) {
-  const { isMobile, isSmall, isTablet } = useBreakpoint();
-  const { yearStats, totalIn, totalOut, streak, longest } = analysis;
-  const years = Object.keys(yearStats).sort();
-  const [hIn, setHIn] = useState(false);
-  useEffect(() => { const t = setTimeout(() => setHIn(true), 80); return () => clearTimeout(t); }, []);
-
-  const pad = isSmall ? "16px" : isMobile ? "20px" : "32px 24px";
-  const compact = isSmall || isMobile;
-
-  // Donut + bar: stack on mobile, side-by-side on tablet+
-  const splitCols = isMobile ? "1fr" : "minmax(0,1fr) minmax(0,2fr)";
-
-  return (
-    <div style={{ minHeight: "100vh", background: T.paper, fontFamily: "'DM Sans', sans-serif", color: T.ink }}>
-
-      {/* Top bar */}
-      <div style={{
-        background: T.ink, color: T.cream,
-        padding: isSmall ? "10px 16px" : "12px 32px",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        opacity: hIn ? 1 : 0, transition: "opacity 0.8s ease",
-        position: "sticky", top: 0, zIndex: 100,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: isSmall ? 14 : 16 }}>🛂</span>
-          {!isSmall && (
-            <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 2.5, textTransform: "uppercase", color: T.sand }}>I-94 Analyzer</span>
-          )}
-        </div>
-        <button onClick={onReset} style={{
-          background: "transparent", border: `1px solid ${T.sand}55`, borderRadius: 2,
-          color: T.sand, fontFamily: "'Courier Prime', monospace",
-          fontSize: isSmall ? 9 : 10, letterSpacing: 1.5,
-          padding: isSmall ? "5px 10px" : "5px 14px",
-          cursor: "pointer", textTransform: "uppercase", transition: "opacity 0.2s",
-          WebkitTapHighlightColor: "transparent",
-        }}>← New Upload</button>
-      </div>
-
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: pad }}>
-
-        {/* Page title */}
-        <div style={{
-          marginBottom: compact ? 20 : 32,
-          opacity: hIn ? 1 : 0,
-          transform: hIn ? "translateY(0)" : "translateY(20px)",
-          transition: "all 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s",
-        }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
-            <h1 style={{ margin: 0, fontSize: isSmall ? 26 : "clamp(24px,5vw,44px)", fontFamily: "'Playfair Display', serif", fontWeight: 700, lineHeight: 1.1 }}>
-              Travel Record
-            </h1>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <Stamp color={T.terra} rotate={-2}>{rows.length} events</Stamp>
-              <Stamp color={T.sage}  rotate={1}>{years.length} years</Stamp>
-            </div>
-          </div>
-          {!isSmall && (
-            <p style={{ color: T.muted, fontSize: 10, fontFamily: "'Courier Prime', monospace", margin: "4px 0 14px", letterSpacing: 0.5 }}>
-              Source: U.S. Customs & Border Protection · i94.cbp.dhs.gov
-            </p>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ flex: 1, height: 1, background: T.ink }} />
-            <div style={{ width: 5, height: 5, background: T.terra, transform: "rotate(45deg)" }} />
-            <div style={{ width: 5, height: 5, background: T.terra, transform: "rotate(45deg)" }} />
-            <div style={{ width: 5, height: 5, background: T.terra, transform: "rotate(45deg)" }} />
-            <div style={{ flex: 1, height: 1, background: T.ink }} />
-          </div>
-        </div>
-
-        {/* Stat cards — 2 cols on mobile, 4 on desktop */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: isSmall ? "1fr 1fr" : isMobile ? "1fr 1fr" : "repeat(4, 1fr)",
-          gap: compact ? 10 : 14,
-          marginBottom: compact ? 16 : 24,
-        }}>
-          <StatCard label="Days Inside USA"     value={totalIn}  icon="🇺🇸" color={T.sage}  delay={180} compact={compact} />
-          <StatCard label="Days Outside USA"    value={totalOut} icon="✈️"  color={T.terra} delay={300} compact={compact} />
-          <StatCard label="USA Streak"          value={streak}   icon="🔥"  color={T.sand}  delay={420} compact={compact} />
-          <StatCard label="Longest Trip Abroad" value={longest}  icon="🌍"  color={T.stamp} delay={540} compact={compact} />
-        </div>
-
-        {/* Donut + bar chart */}
-        <div style={{ display: "grid", gridTemplateColumns: splitCols, gap: compact ? 10 : 14, marginBottom: 8 }}>
-
-          {/* Donut */}
-          <div style={{ background: T.cream, border: `1px solid ${T.border}`, borderRadius: 3, padding: compact ? 16 : 24, boxShadow: "2px 3px 0 #D5CCBA", minWidth: 0, overflow: "hidden", display: "flex", flexDirection: isMobile ? "row" : "column", alignItems: "center", justifyContent: "center", gap: isMobile ? 20 : 0, position: "relative" }}>
-            {!isSmall && (
-              <div style={{ position: "absolute", top: 10, right: 12, transform: "rotate(5deg)" }}>
-                <Stamp color={T.muted}>Overall</Stamp>
-              </div>
-            )}
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: "'Courier Prime', monospace", letterSpacing: 2, textTransform: "uppercase", marginBottom: isMobile ? 0 : 12, marginTop: isMobile ? 0 : 12, flexShrink: 0 }}>Split</div>
-            <div style={{ width: isMobile ? 120 : "100%", maxWidth: 170, flexShrink: 0 }}>
-              <RingChart inside={totalIn} outside={totalOut} />
-            </div>
-            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 8 : 18, flexWrap: "wrap", justifyContent: "center", alignItems: isMobile ? "flex-start" : "center" }}>
-              <div style={{ textAlign: isMobile ? "left" : "center" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: T.sage,  fontFamily: "'Courier Prime', monospace" }}>{totalIn}d</div>
-                <div style={{ fontSize: 9, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Inside</div>
-              </div>
-              <div style={{ textAlign: isMobile ? "left" : "center" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: T.terra, fontFamily: "'Courier Prime', monospace" }}>{totalOut}d</div>
-                <div style={{ fontSize: 9, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Outside</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bar chart */}
-          <div style={{ background: T.cream, border: `1px solid ${T.border}`, borderRadius: 3, padding: compact ? 16 : 24, boxShadow: "2px 3px 0 #D5CCBA", minWidth: 0, overflow: "hidden" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <div style={{ fontSize: 9, color: T.muted, fontFamily: "'Courier Prime', monospace", letterSpacing: 2, textTransform: "uppercase" }}>Days by Year</div>
-              <div style={{ display: "flex", gap: 10 }}>
-                {[["Inside", T.sage], ["Outside", T.terra]].map(([l, c]) => (
-                  <div key={l} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 1, background: c }} />
-                    <span style={{ fontSize: 9, color: T.muted, fontFamily: "'Courier Prime', monospace", textTransform: "uppercase", letterSpacing: 0.5 }}>{l}</span>
+        {/* Trips */}
+        {tab === 1 && (
+          <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {metrics.tripLog.map((t, i) => (
+              <div key={i} className={`card card-lift ${i % 2 === 0 ? "card-green" : "card-red"}`} style={{ padding: "16px 18px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <div style={{ width: 18, height: 1, background: "#C8B89A" }} />
+                      <span className="section-label">Trip {i + 1}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "#2C5F4A", fontWeight: 500, marginBottom: 4 }}>
+                      Arrived <span style={{ color: "#5C4A2A", fontWeight: 400 }}>{fmt(t.arrival)}</span>
+                      <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, letterSpacing: ".04em" }}> · {AIRPORT_CODES[t.arrivalLoc] || t.arrivalLoc}</span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: t.departure === "Present" ? "#8B7355" : "#C0392B" }}>
+                      {t.departure === "Present" ? "Currently in USA" : `Departed `}
+                      {t.departure !== "Present" && <span style={{ color: "#5C4A2A", fontWeight: 400 }}>{fmt(t.departure)}</span>}
+                      {t.departure !== "Present" && <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, letterSpacing: ".04em" }}> · {AIRPORT_CODES[t.departureLoc] || t.departureLoc}</span>}
+                    </div>
                   </div>
-                ))}
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div className="stat-num" style={{ fontSize: 38, color: "#2C2C1E", lineHeight: .9 }}>{t.stayDays}</div>
+                    <div className="section-label" style={{ marginTop: 4, fontSize: 8 }}>days in USA</div>
+                  </div>
+                </div>
+                {t.gapDays !== null && (
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #DDD0B8", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="dot-gap" />
+                    <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, color: "#B8860B", fontWeight: 600, letterSpacing: ".04em" }}>{t.gapDays}d outside</span>
+                    <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#8B7355" }}>· returned {fmt(t.gapEnd)}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Locations */}
+        {tab === 2 && (
+          <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(metrics.locVisits).sort((a, b) => (b[1].arrivals + b[1].departures) - (a[1].arrivals + a[1].departures)).map(([code, v]) => (
+              <div key={code} className="card card-lift" style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 46, height: 46, borderRadius: 4, border: "1px solid #C8B89A", background: "#E8DCC8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: 14, color: "#2C5F4A", letterSpacing: ".06em" }}>{code}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "#2C2C1E", marginBottom: 4 }}>{AIRPORT_CODES[code] || code}</div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
+                    <span style={{ color: "#2C5F4A", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 600, letterSpacing: ".04em" }}>{v.arrivals} arrivals</span>
+                    <span style={{ color: "#C0392B", fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 600, letterSpacing: ".04em" }}>{v.departures} departures</span>
+                  </div>
+                </div>
+                <div className="stat-num" style={{ fontSize: 28, color: "#C8B89A" }}>{v.arrivals + v.departures}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* By Year */}
+        {tab === 3 && (
+          <div className="fade card" style={{ padding: "18px 18px 12px" }}>
+            {/* Legend */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span className="section-label">Days by Year</span>
+              <div style={{ display: "flex", gap: 12 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#2C5F4A", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>
+                  <span style={{ width: 10, height: 3, borderRadius: 99, background: "#2C5F4A", display: "inline-block" }} />Inside
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#C0392B", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>
+                  <span style={{ width: 10, height: 3, borderRadius: 99, background: "#C0392B", display: "inline-block" }} />Outside
+                </span>
               </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: compact ? 12 : 16 }}>
-              {years.map((y, i) => {
-                const d = yearStats[y], total = d.inside + d.outside;
-                const inP = (d.inside / total) * 100, outP = (d.outside / total) * 100;
+
+            {(()=>{
+              const allYrs = Array.from(new Set([...Object.keys(metrics.yearlyDays), ...Object.keys(metrics.yearlyOutsideDays)])).sort((a,b) => b-a);
+              return allYrs.map(yr => {
+                const inD = metrics.yearlyDays[yr] || 0;
+                const outD = metrics.yearlyOutsideDays[yr] || 0;
+                const d = diy(+yr);
+                const inP = Math.round(inD / d * 100);
+                const outP = Math.round(outD / d * 100);
                 return (
-                  <div key={y}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, minWidth: 0 }}>
-                      <span style={{ fontSize: compact ? 12 : 14, fontFamily: "'Playfair Display', serif", fontWeight: 700, color: T.ink, flexShrink: 0 }}>{y}</span>
-                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontSize: 10, color: T.sage,  fontFamily: "'Courier Prime', monospace" }}>🇺🇸 {d.inside}d</span>
-                        <span style={{ fontSize: 10, color: T.terra, fontFamily: "'Courier Prime', monospace" }}>✈️ {d.outside}d</span>
+                  <div key={yr} style={{ marginBottom: 18 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                      <div className="stat-num" style={{ fontSize: 22, color: "#2C2C1E" }}>{yr}</div>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, color: "#2C5F4A", fontWeight: 700 }}>
+                          {inD}d
+                        </span>
+                        <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, color: "#C0392B", fontWeight: 700 }}>
+                          {outD}d
+                        </span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", height: 8, borderRadius: 2, overflow: "hidden", gap: 2, width: "100%" }}>
-                      <div style={{ width: `${inP}%`, background: T.sage,  transition: `width 1.2s cubic-bezier(0.16,1,0.3,1) ${i*70}ms`,    borderRadius: "2px 0 0 2px" }} />
-                      {d.outside > 0 && <div style={{ width: `${outP}%`, background: T.terra, transition: `width 1.2s cubic-bezier(0.16,1,0.3,1) ${i*70+80}ms`, borderRadius: "0 2px 2px 0" }} />}
+                    <div className="bar-track">
+                      {inP > 0 && <div className="bar-in" style={{ width: `${inP}%`, borderRadius: outP === 0 ? "99px" : "99px 0 0 99px" }} />}
+                      {outP > 0 && <div className="bar-out" style={{ width: `${outP}%`, borderRadius: inP === 0 ? "99px" : "0 99px 99px 0" }} />}
                     </div>
                   </div>
                 );
-              })}
+              });
+            })()}
+          </div>
+        )}
+
+        {/* Timeline */}
+        {tab === 4 && (
+          <div className="fade card" style={{ overflow: "hidden" }}>
+            <div style={{ padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #C8B89A" }}>
+              <span className="section-label">Full Timeline</span>
+              <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#8B7355" }}>{metrics.tripLog.length} trips</span>
             </div>
+            {metrics.tripLog.map((t, i) => (
+              <div key={i}>
+                <div style={{ display: "flex", padding: "14px 18px", gap: 14, alignItems: "flex-start", borderBottom: "1px solid #DDD0B8" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 3, flexShrink: 0, width: 8 }}>
+                    <div className="dot-arr" />
+                    <div className="t-rail" style={{ height: 42 }} />
+                    <div className={t.departure === "Present" ? "dot-gap" : "dot-dep"} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: "#2C5F4A", fontWeight: 500, marginBottom: 6 }}>
+                      Arrived {fmt(t.arrival)}
+                      <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11 }}> · {AIRPORT_CODES[t.arrivalLoc] || t.arrivalLoc}</span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "baseline", gap: 5, background: "#E4F0EB", border: "1px solid #9FBFB0", borderRadius: 3, padding: "3px 10px", marginBottom: 6 }}>
+                      <span className="stat-num" style={{ fontSize: 16, color: "#2C5F4A" }}>{t.stayDays}</span>
+                      <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 9, color: "#2C5F4A", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>days in USA</span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: t.departure === "Present" ? "#8B7355" : "#C0392B" }}>
+                      {t.departure === "Present" ? "Currently in USA" : `Departed ${fmt(t.departure)}`}
+                      {t.departure !== "Present" && <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, fontWeight: 400 }}> · {AIRPORT_CODES[t.departureLoc] || t.departureLoc}</span>}
+                    </div>
+                  </div>
+                  <span className="badge-num">#{i + 1}</span>
+                </div>
+                {t.gapDays !== null && (
+                  <div style={{ padding: "9px 18px 9px 50px", background: "#F5EDD8", borderBottom: "1px solid #DDD0B8", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="dot-gap" />
+                    <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, color: "#8B6914", fontWeight: 700, letterSpacing: ".04em" }}>{t.gapDays}d outside USA</span>
+                    <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#8B7355" }}>· returned {fmt(t.gapEnd)}</span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        </div>
+        )}
 
-        {/* Yearly breakdown */}
-        <Divider label="Yearly Breakdown" />
-        <div style={{ display: "flex", flexDirection: "column", gap: compact ? 8 : 10, marginBottom: 8 }}>
-          {years.map((y, i) => <YearCard key={y} year={y} data={yearStats[y]} index={i} compact={compact} />)}
-        </div>
-
-        {/* Travel log table */}
-        <Divider label="Travel Log" />
-        <div style={{ background: T.cream, border: `1px solid ${T.border}`, borderRadius: 3, boxShadow: "2px 3px 0 #D5CCBA", marginBottom: 28, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isSmall ? 11 : 12, minWidth: 380 }}>
-              <thead>
-                <tr style={{ borderBottom: `2px solid ${T.ink}`, background: T.paper }}>
-                  {["#", "Date", "Type", "Port", "Gap"].map(h => (
-                    <th key={h} style={{ textAlign: "left", padding: compact ? "8px 10px" : "10px 14px", fontSize: 9, fontFamily: "'Courier Prime', monospace", letterSpacing: 2, textTransform: "uppercase", color: T.muted, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[...rows].reverse().map((r, i) => {
-                  const rev = [...rows].reverse();
-                  const prev = rev[i + 1];
-                  const gap = prev ? Math.abs(Math.round((new Date(r.date) - new Date(prev.date)) / 86400000)) : null;
-                  const isArr = r.type.toLowerCase() === "arrival";
-                  return (
-                    <tr key={i} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? T.cream : T.paper }}>
-                      <td style={{ padding: compact ? "8px 10px" : "10px 14px", color: T.muted, fontFamily: "'Courier Prime', monospace", fontSize: 10 }}>{rows.length - i}</td>
-                      <td style={{ padding: compact ? "8px 10px" : "10px 14px", fontFamily: "'Courier Prime', monospace", color: T.ink, fontWeight: 700, whiteSpace: "nowrap" }}>{r.date}</td>
-                      <td style={{ padding: compact ? "8px 10px" : "10px 14px" }}>
-                        <span style={{ display: "inline-block", border: `1.5px solid ${isArr ? T.sage : T.terra}`, color: isArr ? T.sage : T.terra, borderRadius: 2, padding: "2px 6px", fontSize: 8, fontWeight: 700, fontFamily: "'Courier Prime', monospace", letterSpacing: 0.5, whiteSpace: "nowrap" }}>
-                          {isArr ? "▼ ARR" : "▲ DEP"}
-                        </span>
-                      </td>
-                      <td style={{ padding: compact ? "8px 10px" : "10px 14px", fontFamily: "'Courier Prime', monospace", color: T.inkLight, letterSpacing: 1, fontSize: 11 }}>{r.location}</td>
-                      <td style={{ padding: compact ? "8px 10px" : "10px 14px" }}>
-                        {gap !== null
-                          ? <span style={{ fontFamily: "'Courier Prime', monospace", color: T.stamp, fontWeight: 700 }}>{gap}d</span>
-                          : <span style={{ color: T.muted }}>—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ textAlign: "center", paddingBottom: 32, borderTop: `1px solid ${T.border}`, paddingTop: 20 }}>
-          <p style={{ fontSize: 10, color: T.muted, fontFamily: "'Courier Prime', monospace", lineHeight: 2, margin: 0 }}>
-            Source: U.S. Customs and Border Protection · i94.cbp.dhs.gov<br />
-            <span style={{ color: T.terra }}>⚠ Informational only. Consult an immigration attorney for legal advice.</span>
-          </p>
-        </div>
       </div>
+    )}
+  </div>
+</div>
+```
 
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Courier+Prime:wght@400;700&family=DM+Sans:wght@400;500;600&display=swap');
-        * { box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; }
-        body { margin: 0; background: ${T.paper}; }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: ${T.paper}; }
-        ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 2px; }
-        tr:hover td { background: ${T.border}33 !important; transition: background 0.15s; }
-        button:active { opacity: 0.7; }
-      `}</style>
-    </div>
-  );
-}
-
-// ── Root ──────────────────────────────────────────────────────────
-export default function App() {
-  const [data, setData] = useState(null);
-  const [rows, setRows] = useState([]);
-  const handleData = (a, r) => { setData(a); setRows(r); };
-  if (!data) return <UploadScreen onData={handleData} />;
-  return <Dashboard analysis={data} rows={rows} onReset={() => { setData(null); setRows([]); }} />;
+);
 }
