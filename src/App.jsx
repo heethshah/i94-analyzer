@@ -126,15 +126,15 @@ function Donut({ pct, size = 100 }) {
   const dash = (pct / 100) * circ;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100">
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#D8CCBA" strokeWidth="10" />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#DDD5CC" strokeWidth="10" />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#C0392B" strokeWidth="10"
         strokeDasharray={`${(100 - pct) / 100 * circ} ${pct / 100 * circ}`}
         strokeDashoffset={circ * 0.25} strokeLinecap="butt" />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#2C5F4A" strokeWidth="10"
         strokeDasharray={`${dash} ${circ - dash}`}
         strokeDashoffset={circ * 0.25 + (100 - pct) / 100 * circ} strokeLinecap="butt" />
-      <text x={cx} y={cy - 4} textAnchor="middle" fill="#2C2C1E" fontFamily="'Playfair Display',serif" fontSize="14" fontWeight="700">{pct}%</text>
-      <text x={cx} y={cy + 10} textAnchor="middle" fill="#8B7355" fontFamily="'Barlow Condensed',sans-serif" fontSize="7" fontWeight="600" letterSpacing="1.5">IN USA</text>
+      <text x={cx} y={cy - 4} textAnchor="middle" fill="#3D2F28" fontFamily="'Playfair Display',serif" fontSize="14" fontWeight="700">{pct}%</text>
+      <text x={cx} y={cy + 10} textAnchor="middle" fill="#A89888" fontFamily="'Barlow Condensed',sans-serif" fontSize="7" fontWeight="600" letterSpacing="1.5">IN USA</text>
     </svg>
   );
 }
@@ -187,88 +187,92 @@ export default function App() {
   const usaPct = metrics ? Math.round(metrics.totalUsaDays / (metrics.totalUsaDays + metrics.totalOutsideDays) * 100) : 0;
 
   return (
-    <div style={{ fontFamily: "'Barlow',sans-serif", minHeight: "100vh", background: "#E8E0D0", color: "#2C2C1E", display: "flex", flexDirection: "column" }}>
+    <div style={{ fontFamily: "'Barlow',sans-serif", minHeight: "100vh", background: "#F2EDE8", color: "#3D2F28", display: "flex", flexDirection: "column" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { -webkit-text-size-adjust: 100%; height: 100%; }
         body { -webkit-font-smoothing: antialiased; overflow-x: hidden; height: 100%; }
         ::-webkit-scrollbar { width: 3px; height: 3px; }
-        ::-webkit-scrollbar-track { background: #E8E0D0; }
-        ::-webkit-scrollbar-thumb { background: #C8B89A; border-radius: 99px; }
+        ::-webkit-scrollbar-track { background: #F2EDE8; }
+        ::-webkit-scrollbar-thumb { background: #CCBCB0; border-radius: 99px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fu { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
         .fade { animation: fu .35s ease both; }
-        .hdr { background: linear-gradient(135deg, #1A1A0E 0%, #2C2416 40%, #3A1A0A 100%); border-bottom: 1px solid rgba(200,184,154,.15); position: sticky; top: 0; z-index: 50; }
+        .hdr { background: linear-gradient(135deg, #3D2F28 0%, #4A3830 100%); border-bottom: 1px solid rgba(200,184,154,.15); position: sticky; top: 0; z-index: 50; }
         .hdr-inner { max-width: 1400px; margin: 0 auto; padding: 0 clamp(12px,3vw,32px); height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .hdr-brand { display: flex; align-items: center; gap: 10px; }
-        .hdr-icon { width: 30px; height: 30px; border-radius: 6px; background: linear-gradient(135deg, #C8860B, #E8A020); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .hdr-icon { width: 30px; height: 30px; border-radius: 6px; background: linear-gradient(135deg, #B5704A, #D4906A); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .hdr-title { font-family: 'Playfair Display',serif; font-size: clamp(14px,2vw,17px); color: #F5ECD8; font-weight: 700; letter-spacing: -.2px; }
         .hdr-sub { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; color: #7A6845; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
         .hdr-meta { display: flex; align-items: center; gap: 8px; }
-        .hdr-badge { font-family: 'Barlow Condensed',sans-serif; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 3px; letter-spacing: .06em; text-transform: uppercase; background: rgba(200,134,11,.15); color: #C8860B; border: 1px solid rgba(200,134,11,.3); }
-        .hdr-btn { border: 1px solid rgba(200,184,154,.2); border-radius: 4px; background: rgba(200,184,154,.05); font-size: 10px; padding: 5px 12px; color: #8B7A5A; cursor: pointer; font-family: 'Barlow Condensed',sans-serif; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; transition: all .15s; }
-        .hdr-btn:hover { background: rgba(200,184,154,.12); color: #C8B89A; }
+        .hdr-badge { font-family: 'Barlow Condensed',sans-serif; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 3px; letter-spacing: .06em; text-transform: uppercase; background: rgba(181,112,74,.15); color: #B5704A; border: 1px solid rgba(181,112,74,.3); }
+        .hdr-btn { border: 1px solid rgba(181,112,74,.2); border-radius: 4px; background: rgba(181,112,74,.05); font-size: 10px; padding: 5px 12px; color: #9A7860; cursor: pointer; font-family: 'Barlow Condensed',sans-serif; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; transition: all .15s; }
+        .hdr-btn:hover { background: rgba(181,112,74,.12); color: #B5704A; }
         .outer { max-width: 1400px; margin: 0 auto; padding: clamp(12px,2vw,20px) clamp(12px,3vw,32px) 24px; width: 100%; }
         .dash { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: start; }
         @media(max-width: 900px) { .dash { grid-template-columns: 1fr; } }
         .sidebar { display: flex; flex-direction: column; gap: 8px; }
         @media(max-width: 900px) { .sidebar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; } }
-        .scard { background: #F0E8D8; border: 1px solid #C8B89A; border-radius: 6px; padding: 12px 14px; position: relative; overflow: hidden; transition: transform .15s; }
+        .scard { background: #FAF6F2; border: 1px solid #DDD5CC; border-radius: 6px; padding: 12px 14px; position: relative; overflow: hidden; transition: transform .15s; }
         .scard::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:6px 0 0 6px; }
         .scard-g::before { background: #2C5F4A; }
         .scard-r::before { background: #C0392B; }
-        .scard-o::before { background: #B8860B; }
+        .scard-o::before { background: #B5704A; }
         .scard-b::before { background: #6B4226; }
         .scard:hover { transform: translateY(-1px); }
-        .scard-val { font-family: 'Playfair Display',serif; font-weight: 700; font-size: clamp(26px,3vw,34px); line-height: 1; color: #2C2C1E; margin: 2px 0 6px; }
-        .scard-lbl { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #8B7355; }
-        .scard-days { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; font-weight: 600; color: #B8A888; border: 1px solid #C8B89A; border-radius: 2px; padding: 1px 5px; float: right; margin-top: -2px; }
-        .donut-card { background: #F0E8D8; border: 1px solid #C8B89A; border-radius: 6px; padding: 14px; display: flex; align-items: center; gap: 14px; }
+        .scard-val { font-family: 'Playfair Display',serif; font-weight: 700; font-size: clamp(26px,3vw,34px); line-height: 1; color: #3D2F28; margin: 2px 0 6px; }
+.scard-g .scard-val { color: #2E7D52; }
+.scard-r .scard-val { color: #B83832; }
+.scard-o .scard-val { color: #B5704A; }
+.scard-b .scard-val { color: #2C5F8A; }
+        .scard-lbl { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #A89888; }
+        .scard-days { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; font-weight: 600; color: #C8A888; border: 1px solid #DDD5CC; border-radius: 2px; padding: 1px 5px; float: right; margin-top: -2px; }
+        .donut-card { background: #FAF6F2; border: 1px solid #DDD5CC; border-radius: 6px; padding: 14px; display: flex; align-items: center; gap: 14px; }
         .donut-stats { flex: 1; }
         .donut-row { margin-bottom: 8px; }
         .donut-row:last-child { margin-bottom: 0; }
         .donut-num { font-family: 'Playfair Display',serif; font-weight: 700; font-size: 20px; line-height: 1; }
-        .donut-lbl { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #8B7355; margin-top: 2px; }
-        .dist-bar { background: #F0E8D8; border: 1px solid #C8B89A; border-radius: 6px; padding: 10px 14px; }
-        .dist-track { height: 6px; border-radius: 99px; background: #D8CCBA; overflow: hidden; display: flex; margin: 6px 0 5px; }
-        .bar-in { background: linear-gradient(90deg,#2C5F4A,#3D7A61); }
-        .bar-out { background: linear-gradient(90deg,#A0291F,#C0392B); }
-        .main-panel { background: #F0E8D8; border: 1px solid #C8B89A; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
-        .panel-hdr { display: flex; align-items: center; border-bottom: 1px solid #DDD0B8; flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .donut-lbl { font-family: 'Barlow Condensed',sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #A89888; margin-top: 2px; }
+        .dist-bar { background: #FAF6F2; border: 1px solid #DDD5CC; border-radius: 6px; padding: 10px 14px; }
+        .dist-track { height: 6px; border-radius: 99px; background: #DDD5CC; overflow: hidden; display: flex; margin: 6px 0 5px; }
+        .bar-in { background: linear-gradient(90deg,#2E7D52,#4A9A6A); }
+        .bar-out { background: linear-gradient(90deg,#963028,#B83832); }
+        .main-panel { background: #FAF6F2; border: 1px solid #DDD5CC; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+        .panel-hdr { display: flex; align-items: center; border-bottom: 1px solid #DDD5CC; flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
         .panel-hdr::-webkit-scrollbar { display: none; }
-        .tab-btn { border: none; border-right: 1px solid #DDD0B8; cursor: pointer; font-family: 'Barlow Condensed',sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; transition: all .15s; white-space: nowrap; background: transparent; color: #8B7355; padding: 10px 16px; flex-shrink: 0; }
-        .tab-btn:hover:not(.on) { background: #E8DCC8; color: #5C4A2A; }
-        .tab-btn.on { background: #2C2C1E; color: #F0E8D8; }
+        .tab-btn { border: none; border-right: 1px solid #DDD5CC; cursor: pointer; font-family: 'Barlow Condensed',sans-serif; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; transition: all .15s; white-space: nowrap; background: transparent; color: #A89888; padding: 10px 16px; flex-shrink: 0; }
+        .tab-btn:hover:not(.on) { background: #F0E8E0; color: #5C3A28; }
+        .tab-btn.on { background: #3D2F28; color: #F0E8DE; }
         .tab-btn:last-child { border-right: none; }
         .panel-body { overflow-y: auto; flex: 1; }
         @media(min-width: 901px) { .panel-body { max-height: calc(100vh - 160px); } }
         @media(max-width: 900px) { .panel-body { max-height: 55vh; } }
-        .ov-row { display: flex; align-items: center; padding: 9px 14px; border-bottom: 1px solid #EDE5D5; gap: 10px; transition: background .1s; }
-        .ov-row:hover { background: #E8DCC8; }
+        .ov-row { display: flex; align-items: center; padding: 9px 14px; border-bottom: 1px solid #EDE0D8; gap: 10px; transition: background .1s; }
+        .ov-row:hover { background: #F0E8E0; }
         .ov-row:last-child { border-bottom: none; }
-        .trip-row { padding: 11px 14px; border-bottom: 1px solid #EDE5D5; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; transition: background .1s; }
-        .trip-row:hover { background: #EDE5D5; }
-        .trip-gap { padding: 7px 14px 7px 28px; background: #F7F0E0; border-bottom: 1px solid #EDE5D5; display: flex; align-items: center; gap: 7px; }
-        .loc-row { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid #EDE5D5; gap: 12px; transition: background .1s; }
-        .loc-row:hover { background: #E8DCC8; }
+        .trip-row { padding: 11px 14px; border-bottom: 1px solid #EDE0D8; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; transition: background .1s; }
+        .trip-row:hover { background: #F0E8E0; }
+        .trip-gap { padding: 7px 14px 7px 28px; background: #F5EDE6; border-bottom: 1px solid #EDE0D8; display: flex; align-items: center; gap: 7px; }
+        .loc-row { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid #EDE0D8; gap: 12px; transition: background .1s; }
+        .loc-row:hover { background: #F0E8E0; }
         .loc-row:last-child { border-bottom: none; }
-        .yr-row { padding: 10px 14px; border-bottom: 1px solid #EDE5D5; }
+        .yr-row { padding: 10px 14px; border-bottom: 1px solid #EDE0D8; }
         .yr-row:last-child { border-bottom: none; }
-        .yr-bar-track { height: 5px; border-radius: 99px; background: #D8CCBA; overflow: hidden; display: flex; margin-top: 5px; }
-        .tl-entry { display: flex; padding: 10px 14px; gap: 10px; align-items: flex-start; border-bottom: 1px solid #EDE5D5; transition: background .1s; }
+        .yr-bar-track { height: 5px; border-radius: 99px; background: #DDD5CC; overflow: hidden; display: flex; margin-top: 5px; }
+        .tl-entry { display: flex; padding: 10px 14px; gap: 10px; align-items: flex-start; border-bottom: 1px solid #EDE0D8; transition: background .1s; }
         .tl-entry:hover { background: #EDE5D5; }
-        .tl-gap-row { padding: 6px 14px 6px 36px; background: #F7F0E0; border-bottom: 1px solid #EDE5D5; display: flex; align-items: center; gap: 7px; }
+        .tl-gap-row { padding: 6px 14px 6px 36px; background: #F5EDE6; border-bottom: 1px solid #EDE0D8; display: flex; align-items: center; gap: 7px; }
         .b-arr { display:inline-flex; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:700; padding:2px 7px; border-radius:2px; letter-spacing:.07em; text-transform:uppercase; background:#E4F0EB; color:#2C5F4A; border:1px solid #9FBFB0; white-space:nowrap; }
         .b-dep { display:inline-flex; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:700; padding:2px 7px; border-radius:2px; letter-spacing:.07em; text-transform:uppercase; background:#F5E8E6; color:#C0392B; border:1px solid #D4A49A; white-space:nowrap; }
         .b-num { display:inline-flex; font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:700; padding:2px 7px; border-radius:2px; letter-spacing:.07em; text-transform:uppercase; background:#F0E8D8; color:#8B7355; border:1px solid #C8B89A; white-space:nowrap; flex-shrink:0; }
-        .lbl { font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#8B7355; }
+        .lbl { font-family:'Barlow Condensed',sans-serif; font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#A89888; }
         .dot-a { width:7px; height:7px; border-radius:50%; background:#2C5F4A; flex-shrink:0; }
         .dot-d { width:7px; height:7px; border-radius:50%; background:#C0392B; flex-shrink:0; }
         .dot-g { width:5px; height:5px; border-radius:50%; background:#B8860B; flex-shrink:0; }
         .t-rail { width:1px; background:linear-gradient(to bottom,#2C5F4A50,#C0392B40); margin:3px auto; flex-shrink:0; }
-        .upload-zone { border: 2px dashed #C8B89A; border-radius: 8px; background: #EDE5D5; transition: all .2s; cursor: pointer; }
-        .upload-zone:hover, .upload-zone.drag { border-color: #B8860B; background: #F0E8D0; }
+        .upload-zone { border: 2px dashed #DDD5CC; border-radius: 8px; background: #F0E8E0; transition: all .2s; cursor: pointer; }
+        .upload-zone:hover, .upload-zone.drag { border-color: #B5704A; background: #F5EDE6; }
         @media(max-width:480px) { .hdr-meta { display: none; } .tab-btn { padding: 9px 11px; font-size: 10px; } }
       `}</style>
 
@@ -307,18 +311,18 @@ export default function App() {
               {loading ? (
                 <div>
                   <div style={{ width: 32, height: 32, border: "2px solid #C8B89A", borderTop: "2px solid #B8860B", borderRadius: "50%", margin: "0 auto 16px", animation: "spin 1s linear infinite" }} />
-                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, color: "#2C2C1E", marginBottom: 4 }}>Parsing PDF</div>
-                  <div style={{ fontSize: 12, color: "#8B7355" }}>Extracting travel records...</div>
+                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, color: "#3D2F28", marginBottom: 4 }}>Parsing PDF</div>
+                  <div style={{ fontSize: 12, color: "#A89888" }}>Extracting travel records...</div>
                 </div>
               ) : (
                 <div>
-                  <div style={{ width: 52, height: 52, borderRadius: 8, border: "1px solid #C8B89A", background: "#E8DCC8", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 8, border: "1px solid #DDD5CC", background: "#F0E8E0", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B4226" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/>
                     </svg>
                   </div>
-                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(20px,3vw,28px)", color: "#2C2C1E", marginBottom: 6, fontWeight: 700 }}>Drop Your I-94 PDF</div>
-                  <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#8B7355", marginBottom: 22, letterSpacing: ".06em", textTransform: "uppercase" }}>From i94.cbp.dhs.gov · Processed locally</div>
+                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(20px,3vw,28px)", color: "#3D2F28", marginBottom: 6, fontWeight: 700 }}>Drop Your I-94 PDF</div>
+                  <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#A89888", marginBottom: 22, letterSpacing: ".06em", textTransform: "uppercase" }}>From i94.cbp.dhs.gov · Processed locally</div>
                   <div style={{ display: "inline-flex", alignItems: "center", background: "linear-gradient(135deg,#1A1A0E,#2C2416)", color: "#C8860B", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 12, fontWeight: 700, padding: "10px 26px", borderRadius: 4, letterSpacing: ".1em", textTransform: "uppercase", border: "1px solid rgba(200,134,11,.3)" }}>
                     Browse File
                   </div>
@@ -356,11 +360,11 @@ export default function App() {
                 <Donut pct={usaPct} size={86} />
                 <div className="donut-stats">
                   <div className="donut-row">
-                    <div className="donut-num" style={{ color: "#2C5F4A" }}>{metrics.totalUsaDays}d</div>
+                    <div className="donut-num" style={{ color: "#2E7D52" }}>{metrics.totalUsaDays}d</div>
                     <div className="donut-lbl">Inside</div>
                   </div>
                   <div className="donut-row">
-                    <div className="donut-num" style={{ color: "#C0392B" }}>{metrics.totalOutsideDays}d</div>
+                    <div className="donut-num" style={{ color: "#B83832" }}>{metrics.totalOutsideDays}d</div>
                     <div className="donut-lbl">Outside</div>
                   </div>
                 </div>
@@ -397,11 +401,11 @@ export default function App() {
                       <div key={i} className="ov-row">
                         <div className={r.type === "Arrival" ? "dot-a" : "dot-d"} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: "#2C2C1E", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "#3D2F28", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {AIRPORT_CODES[r.location] || r.location}
-                            <span style={{ color: "#B8A888", fontSize: 10, fontFamily: "'Barlow Condensed',sans-serif", marginLeft: 5 }}>{r.location}</span>
+                            <span style={{ color: "#C8B0A0", fontSize: 10, fontFamily: "'Barlow Condensed',sans-serif", marginLeft: 5 }}>{r.location}</span>
                           </div>
-                          <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#8B7355" }}>{fmt(r.date)}</div>
+                          <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#A89888" }}>{fmt(r.date)}</div>
                         </div>
                         <span className={r.type === "Arrival" ? "b-arr" : "b-dep"}>{r.type}</span>
                       </div>
@@ -415,26 +419,26 @@ export default function App() {
                       <div key={i}>
                         <div className="trip-row">
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 9, fontWeight: 700, color: "#B8A888", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 5 }}>Trip {i + 1}</div>
+                            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 9, fontWeight: 700, color: "#C8B0A0", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 5 }}>Trip {i + 1}</div>
                             <div style={{ fontSize: 12, color: "#2C5F4A", fontWeight: 500, marginBottom: 3 }}>
                               {fmt(t.arrival, true)}
-                              <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.arrivalLoc] || t.arrivalLoc}</span>
+                              <span style={{ color: "#C8B0A0", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.arrivalLoc] || t.arrivalLoc}</span>
                             </div>
                             <div style={{ fontSize: 12, color: t.departure === "Present" ? "#8B7355" : "#C0392B", fontWeight: 500 }}>
                               {t.departure === "Present" ? "Currently in USA" : fmt(t.departure, true)}
-                              {t.departure !== "Present" && <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.departureLoc] || t.departureLoc}</span>}
+                              {t.departure !== "Present" && <span style={{ color: "#C8B0A0", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.departureLoc] || t.departureLoc}</span>}
                             </div>
                           </div>
                           <div style={{ textAlign: "right", flexShrink: 0 }}>
-                            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 26, color: "#2C2C1E", lineHeight: 1 }}>{t.stayDays}</div>
-                            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 8, color: "#8B7355", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>days in USA</div>
+                            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 26, color: "#3D2F28", lineHeight: 1 }}>{t.stayDays}</div>
+                            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 8, color: "#A89888", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>days in USA</div>
                           </div>
                         </div>
                         {t.gapDays !== null && (
                           <div className="trip-gap">
                             <div className="dot-g" />
                             <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#8B6914", fontWeight: 700 }}>{t.gapDays}d outside</span>
-                            <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#8B7355" }}>· back {fmt(t.gapEnd, true)}</span>
+                            <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#A89888" }}>· back {fmt(t.gapEnd, true)}</span>
                           </div>
                         )}
                       </div>
@@ -450,7 +454,7 @@ export default function App() {
                           <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 700, fontSize: 12, color: "#2C5F4A" }}>{code}</span>
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: "#2C2C1E", marginBottom: 3 }}>{AIRPORT_CODES[code] || code}</div>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "#3D2F28", marginBottom: 3 }}>{AIRPORT_CODES[code] || code}</div>
                           <div style={{ display: "flex", gap: 10, fontSize: 10, fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 600 }}>
                             <span style={{ color: "#2C5F4A" }}>{v.arrivals} arr</span>
                             <span style={{ color: "#C0392B" }}>{v.departures} dep</span>
@@ -490,7 +494,7 @@ export default function App() {
                         return (
                           <div key={yr} className="yr-row">
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                              <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 18, color: "#2C2C1E" }}>{yr}</div>
+                              <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 18, color: "#3D2F28" }}>{yr}</div>
                               <div style={{ display: "flex", gap: 10 }}>
                                 <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#2C5F4A", fontWeight: 700 }}>{inD}d</span>
                                 <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 11, color: "#C0392B", fontWeight: 700 }}>{outD}d</span>
@@ -520,7 +524,7 @@ export default function App() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 11, color: "#2C5F4A", fontWeight: 500, marginBottom: 4 }}>
                               {fmt(t.arrival)}
-                              <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.arrivalLoc] || t.arrivalLoc}</span>
+                              <span style={{ color: "#C8B0A0", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.arrivalLoc] || t.arrivalLoc}</span>
                             </div>
                             <div style={{ display: "inline-flex", alignItems: "baseline", gap: 4, background: "#E4F0EB", border: "1px solid #9FBFB0", borderRadius: 2, padding: "2px 8px", marginBottom: 4 }}>
                               <span style={{ fontFamily: "'Playfair Display',serif", fontWeight: 700, fontSize: 14, color: "#2C5F4A" }}>{t.stayDays}</span>
@@ -528,7 +532,7 @@ export default function App() {
                             </div>
                             <div style={{ fontSize: 11, color: t.departure === "Present" ? "#8B7355" : "#C0392B", fontWeight: 500 }}>
                               {t.departure === "Present" ? "Currently in USA" : fmt(t.departure)}
-                              {t.departure !== "Present" && <span style={{ color: "#B8A888", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.departureLoc] || t.departureLoc}</span>}
+                              {t.departure !== "Present" && <span style={{ color: "#C8B0A0", fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10 }}> · {AIRPORT_CODES[t.departureLoc] || t.departureLoc}</span>}
                             </div>
                           </div>
                           <span className="b-num">#{i + 1}</span>
@@ -537,7 +541,7 @@ export default function App() {
                           <div className="tl-gap-row">
                             <div className="dot-g" />
                             <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#8B6914", fontWeight: 700 }}>{t.gapDays}d outside USA</span>
-                            <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#8B7355" }}>· back {fmt(t.gapEnd, true)}</span>
+                            <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 10, color: "#A89888" }}>· back {fmt(t.gapEnd, true)}</span>
                           </div>
                         )}
                       </div>
