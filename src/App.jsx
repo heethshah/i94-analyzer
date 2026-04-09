@@ -126,7 +126,8 @@ function Donut({ pct, size = 100 }) {
   const dash = (pct / 100) * circ;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100">
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#C0392B" strokeWidth="10"
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#FAF6F2" strokeWidth="10" />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#B83832" strokeWidth="10"
         strokeDasharray={`${(100 - pct) / 100 * circ} ${pct / 100 * circ}`}
         strokeDashoffset={circ * 0.25} strokeLinecap="butt" />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#2C5F4A" strokeWidth="10"
