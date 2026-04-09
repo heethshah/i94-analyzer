@@ -149,6 +149,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState(0);
 
+  const handleHome = useCallback(() => {
+    setMetrics(null);
+    setRawRows([]);
+    setError("");
+    setTab(0);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
   const handleFile = useCallback(async (file) => {
     if (!file || file.type !== "application/pdf") { setError("Upload a PDF file."); return; }
     setError(""); setLoading(true);
@@ -267,7 +274,7 @@ export default function App() {
 
       <header className="hdr">
         <div className="hdr-inner">
-          <div className="hdr-brand">
+          <div className="hdr-brand" onClick={handleHome} style={{ cursor: "pointer" }}>
             <div className="hdr-icon">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1A1A0E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
@@ -282,8 +289,7 @@ export default function App() {
             <div className="hdr-meta">
               <span className="hdr-badge">{rawRows.length} Records</span>
               <span className="hdr-badge">{Object.keys(metrics.yearlyDays).length} Years</span>
-              <button className="hdr-btn" onClick={() => { setMetrics(null); setRawRows([]); setError(""); setTab(0); }}>New File</button>
-            </div>
+                  </div>
           )}
         </div>
       </header>
