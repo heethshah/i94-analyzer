@@ -126,7 +126,6 @@ function Donut({ pct, size = 100 }) {
   const dash = (pct / 100) * circ;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100">
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#DDD5CC" strokeWidth="10" />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#C0392B" strokeWidth="10"
         strokeDasharray={`${(100 - pct) / 100 * circ} ${pct / 100 * circ}`}
         strokeDashoffset={circ * 0.25} strokeLinecap="butt" />
@@ -219,7 +218,7 @@ export default function App() {
         .scard-g::before { background: #2C5F4A; }
         .scard-r::before { background: #C0392B; }
         .scard-o::before { background: #B5704A; }
-        .scard-b::before { background: #6B4226; }
+        .scard-b::before { background: #2C5F8A; }
         .scard:hover { transform: translateY(-1px); }
         .scard-val { font-family: 'Playfair Display',serif; font-weight: 700; font-size: clamp(26px,3vw,34px); line-height: 1; color: #3D2F28; margin: 2px 0 6px; }
 .scard-g .scard-val { color: #2E7D52; }
