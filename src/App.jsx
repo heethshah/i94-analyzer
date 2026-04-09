@@ -356,19 +356,6 @@ export default function App() {
                 </div>
               ))}
 
-              <div className="donut-card" style={{ flexDirection: "column", gap: 6 }}>
-                <div className="donut-stats" style={{ width: "100%" }}>
-                  <div className="donut-row">
-                    <div className="donut-num" style={{ color: "#2E7D52" }}>{metrics.totalUsaDays}d</div>
-                    <div className="donut-lbl">Inside</div>
-                  </div>
-                  <div className="donut-row">
-                    <div className="donut-num" style={{ color: "#B83832" }}>{metrics.totalOutsideDays}d</div>
-                    <div className="donut-lbl">Outside</div>
-                  </div>
-                </div>
-              </div>
-
               <div className="dist-bar">
                 <div className="lbl" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span>Split</span>
