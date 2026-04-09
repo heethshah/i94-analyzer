@@ -356,9 +356,8 @@ export default function App() {
                 </div>
               ))}
 
-              <div className="donut-card">
-                <Donut pct={usaPct} size={86} />
-                <div className="donut-stats">
+              <div className="donut-card" style={{ flexDirection: "column", gap: 6 }}>
+                <div className="donut-stats" style={{ width: "100%" }}>
                   <div className="donut-row">
                     <div className="donut-num" style={{ color: "#2E7D52" }}>{metrics.totalUsaDays}d</div>
                     <div className="donut-lbl">Inside</div>
